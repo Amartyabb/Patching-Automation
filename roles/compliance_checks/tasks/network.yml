@@ -1,0 +1,25 @@
+# roles/compliance_checks/tasks/network.yml
+# Validate network security controls
+- name: Check firewall is active
+  ansible.builtin.command: ufw status
+  register: firewall_status
+  changed_when: false
+  failed_when: false
+
+- name: Assert firewall is enabled
+  ansible.builtin.assert:
+    that:
+      - "'Status: active' in firewall_status.stdout"
+    fail_msg: "Firewall is not active"
+
+- name: Check for unauthorized listening ports
+  ansible.builtin.command: ss -tlnp
+  register: listening_ports
+  changed_when: false
+
+- name: Verify only approved ports are open
+  ansible.builtin.assert:
+    that:
+      - (listening_ports.stdout | regex_search(':' ~ item ~ '\\s')) is none
+    fail_msg: "Unauthorized port {{ item }} is listening"
+  loop: "{{ prohibited_ports | default(['23', '21', '69']) }}"
