@@ -1,0 +1,52 @@
+# playbooks/generate_report.yml
+# Generate a human-readable compliance report
+- name: Generate compliance report
+  hosts: all
+  become: true
+  vars:
+    checks_passed: []
+    checks_failed: []
+  tasks:
+    - name: Check SSH root login
+      ansible.builtin.command: sshd -T
+      register: sshd_config
+      changed_when: false
+
+    - name: Record SSH check
+      ansible.builtin.set_fact:
+        checks_passed: "{{ checks_passed + ['SSH root login disabled'] }}"
+      when: "'permitrootlogin no' in sshd_config.stdout"
+
+    - name: Record SSH failure
+      ansible.builtin.set_fact:
+        checks_failed: "{{ checks_failed + ['SSH root login NOT disabled'] }}"
+      when: "'permitrootlogin no' not in sshd_config.stdout"
+
+    - name: Check password complexity
+      ansible.builtin.command: grep -E '^minlen' /etc/security/pwquality.conf
+      register: pwquality
+      changed_when: false
+      failed_when: false
+
+    - name: Record password check
+      ansible.builtin.set_fact:
+        checks_passed: "{{ checks_passed + ['Password minimum length configured'] }}"
+      when: pwquality.rc == 0
+
+    - name: Print compliance summary
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Compliance Report for {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+          PASSED: {{ checks_passed | length }}
+          {% for check in checks_passed %}
+            [PASS] {{ check }}
+          {% endfor %}
+          FAILED: {{ checks_failed | length }}
+          {% for check in checks_failed %}
+            [FAIL] {{ check }}
+          {% endfor %}
+          ========================================
+          Score: {{ (checks_passed | length * 100 / (checks_passed | length + checks_failed | length)) | round(1) }}%
