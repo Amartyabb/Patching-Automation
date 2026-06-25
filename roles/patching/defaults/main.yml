@@ -1,0 +1,14 @@
+# roles/patching/defaults/main.yml - Patching configuration
+
+patching_reboot_enabled: true
+patching_reboot_timeout: 600
+patching_pre_check_enabled: true
+patching_post_check_enabled: true
+patching_security_only: false
+patching_serial: "25%"
+patching_max_fail_percentage: 0
+
+# Health check URL (application-level validation)
+patching_health_url: ""
+patching_health_retries: 10
+patching_health_delay: 10
