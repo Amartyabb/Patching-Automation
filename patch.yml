@@ -1,0 +1,8 @@
+---
+# patch.yml - Rolling patch playbook
+- hosts: all
+  become: yes
+  serial: "{{ patching_serial }}"
+  max_fail_percentage: "{{ patching_max_fail_percentage }}"
+  roles:
+    - patching
