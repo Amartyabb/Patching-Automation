@@ -1,0 +1,27 @@
+---
+# roles/patching/tasks/pre_checks.yml - Validate before patching
+- name: Check disk space (need at least 2GB free)
+  command: df -BG / --output=avail
+  register: disk_space
+  changed_when: false
+
+- name: Fail if insufficient disk space
+  fail:
+    msg: "Insufficient disk space for patching. Available: {{ disk_space.stdout_lines[1] | trim }}"
+  when: (disk_space.stdout_lines[1] | trim | regex_replace('G','') | int) < 2
+
+- name: Record running services before patching
+  command: systemctl list-units --type=service --state=running --no-pager
+  register: pre_patch_services
+  changed_when: false
+
+- name: Save pre-patch service list
+  copy:
+    content: "{{ pre_patch_services.stdout }}"
+    dest: /tmp/pre_patch_services.txt
+    mode: '0644'
+
+- name: Record current kernel version
+  command: uname -r
+  register: pre_patch_kernel
+  changed_when: false
