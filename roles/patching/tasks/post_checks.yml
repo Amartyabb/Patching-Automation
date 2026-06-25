@@ -1,0 +1,44 @@
+---
+# roles/patching/tasks/post_checks.yml - Validate after patching
+- name: Verify system booted successfully
+  command: systemctl is-system-running
+  register: system_status
+  changed_when: false
+  ignore_errors: yes
+
+- name: Check for failed services
+  command: systemctl --failed --no-pager
+  register: failed_services
+  changed_when: false
+
+- name: Display any failed services
+  debug:
+    msg: "{{ failed_services.stdout_lines }}"
+  when: failed_services.stdout_lines | length > 1
+
+- name: Check application health endpoint
+  uri:
+    url: "{{ patching_health_url }}"
+    status_code: 200
+  register: app_health
+  until: app_health.status == 200
+  retries: "{{ patching_health_retries }}"
+  delay: "{{ patching_health_delay }}"
+  when: patching_health_url | length > 0
+
+- name: Record current kernel version
+  command: uname -r
+  register: post_patch_kernel
+  changed_when: false
+
+- name: Generate patching report
+  copy:
+    content: |
+      Patching Report for {{ inventory_hostname }}
+      Date: {{ ansible_date_time.iso8601 }}
+      Kernel Before: {{ pre_patch_kernel.stdout | default('N/A') }}
+      Kernel After: {{ post_patch_kernel.stdout }}
+      Reboot Required: {{ reboot_required.stat.exists }}
+      System Status: {{ system_status.stdout | default('unknown') }}
+    dest: /var/log/patching-report-{{ ansible_date_time.date }}.txt
+    mode: '0644'
