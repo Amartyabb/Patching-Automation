@@ -1,0 +1,68 @@
+# playbooks/remediate_compliance.yml
+# Detect and fix compliance issues automatically
+- name: Compliance remediation
+  hosts: all
+  become: true
+  tasks:
+    - name: Ensure SSH hardening
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^X11Forwarding', line: 'X11Forwarding no' }
+        - { regexp: '^MaxAuthTries', line: 'MaxAuthTries 4' }
+        - { regexp: '^ClientAliveInterval', line: 'ClientAliveInterval 300' }
+        - { regexp: '^ClientAliveCountMax', line: 'ClientAliveCountMax 0' }
+      notify: restart sshd
+
+    - name: Ensure audit logging is configured
+      ansible.builtin.package:
+        name: auditd
+        state: present
+
+    - name: Start and enable auditd
+      ansible.builtin.service:
+        name: auditd
+        state: started
+        enabled: true
+
+    - name: Deploy audit rules
+      ansible.builtin.copy:
+        dest: /etc/audit/rules.d/compliance.rules
+        content: |
+          # Monitor authentication events
+          -w /var/log/faillog -p wa -k logins
+          -w /var/log/lastlog -p wa -k logins
+          # Monitor user and group changes
+          -w /etc/passwd -p wa -k identity
+          -w /etc/group -p wa -k identity
+          -w /etc/shadow -p wa -k identity
+          # Monitor sudo usage
+          -w /etc/sudoers -p wa -k actions
+          -w /var/log/sudo.log -p wa -k actions
+        mode: '0640'
+      notify: restart auditd
+
+    - name: Configure password aging
+      ansible.builtin.lineinfile:
+        path: /etc/login.defs
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS 90' }
+        - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS 7' }
+        - { regexp: '^PASS_WARN_AGE', line: 'PASS_WARN_AGE 14' }
+
+  handlers:
+    - name: restart sshd
+      ansible.builtin.service:
+        name: "{{ 'ssh' if ansible_os_family == 'Debian' else 'sshd' }}"
+        state: restarted
+
+    - name: restart auditd
+      ansible.builtin.service:
+        name: auditd
+        state: restarted
